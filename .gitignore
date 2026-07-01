@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+venv_gpu/
+env/
+
+# Model weights (auto-downloaded on first run)
+*.pt
+*.onnx
+*.engine
+
+# Runtime output
+outputs/
+experiments/
+*.mp4
+*.avi
+*.mov
+*.mkv
+!assets/*.mp4
+
+# Alert exports
+*_alerts_*.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

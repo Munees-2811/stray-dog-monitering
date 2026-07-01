@@ -1,0 +1,16 @@
+# Stray Dog Monitoring System — dependencies
+
+# Detection / inference (YOLO26)
+ultralytics>=8.3.0
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Computer vision
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Config
+pyyaml>=6.0
+
+# Desktop GUI
+Pillow>=10.0.0

@@ -1,0 +1,51 @@
+# Stray Dog Monitoring System — Master Configuration
+# Every tunable value lives here so there are no magic numbers in the code.
+
+project:
+  name: stray_dog_monitoring
+  device: auto            # auto, cpu, cuda:0, cuda:1
+
+# ── Detection (YOLO26) ────────────────────────────────────────────────
+detector:
+  model: yolo26n.pt       # yolo26n / yolo26s / yolo26m / yolo26l / yolo26x
+  pose_model: yolo11m-pose.pt  # human keypoints; set null to disable pose features
+  conf: 0.35              # detection confidence threshold
+  iou: 0.45               # NMS IoU threshold
+
+# ── Tracking (IoU tracker) ────────────────────────────────────────────
+tracker:
+  iou_threshold: 0.20
+  max_missed: 15          # drop a track after this many missed frames
+  history_len: 30         # frames of risk/box history kept per dog
+
+# ── Risk engine (geometric + temporal) ───────────────────────────────
+risk:
+  threshold: 0.35         # alert when smoothed risk crosses this
+  smoothing_alpha: 0.6    # EMA weight for the new frame (lower = smoother)
+  sustain_frames: 2       # risk must hold above threshold for N frames
+  cooldown_frames: 30     # suppress repeat alerts for the same dog
+  # Contribution weights (should sum to ~1.0 before the pack bonus)
+  weights:
+    distance: 0.55        # dog <-> nearest-person distance (dominant signal)
+    velocity: 0.20        # dog moving toward a person
+    posture: 0.10         # dog box aspect-ratio change (lunging / rearing)
+    human_pose: 0.05      # nearby human defensive posture (arms up / crouch)
+  pack_bonus: 0.10        # added when more than one dog is present
+
+# ── ESP32-CAM + HC-SR04 hardware bridge ───────────────────────────────
+hardware:
+  esp_ip: 192.168.1.100   # default ESP32 IP (editable in the GUI)
+  proximity_alert_cm: 100 # ultrasonic distance that counts as "too close"
+  poll_interval_s: 0.5    # how often the distance endpoint is polled
+
+# ── Alerting ──────────────────────────────────────────────────────────
+alerts:
+  default_type: normal    # normal | hr  (hr = high-risk, lower threshold)
+  hr_threshold_drop: 0.10 # HR mode lowers the risk threshold by this amount
+  sound_enabled: true
+
+# ── Inference runtime ─────────────────────────────────────────────────
+inference:
+  skip_frames: 1          # process every Nth frame (1 = every frame)
+  save_output: true       # write annotated video for file/webcam runs
+  output_dir: outputs
