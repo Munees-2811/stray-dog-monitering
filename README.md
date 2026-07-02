@@ -274,5 +274,48 @@ worse than an occasional false alarm, so the defaults lean toward catching more.
 ## Requirements
 
 - Python 3.10+
-- PyTorch 2.0+ (CUDA optional but recommended)
+- PyTorch 2.0+ (CUDA strongly recommended for real-time — see below)
 - Ultralytics (YOLO26 support), OpenCV, NumPy, Pillow, PyYAML
+
+## GPU acceleration (recommended)
+
+On an NVIDIA GPU the detector runs many times faster than on CPU (the
+difference between smooth real-time and a slideshow). The app selects the GPU
+automatically (`project.device: auto` in `config/config.yaml`) — you only have
+to install a **CUDA build of PyTorch**.
+
+> On Windows, a plain `pip install torch` installs the **CPU-only** build. You
+> must install from PyTorch's CUDA index to use the GPU.
+
+```bash
+# 1. confirm the GPU is visible to the OS
+nvidia-smi
+
+# 2. install matched CUDA torch + torchvision TOGETHER (one command, one index)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# 3. verify — you want "cuda True" and your GPU name
+python -c "import torch, torchvision; print(torch.__version__); print('cuda', torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU only')"
+```
+
+Notes:
+- **Install `torch` and `torchvision` in the same command from the same index** —
+  they are version-locked; installing/removing them separately mismatches them
+  (`torch 2.6.0+cu124` pairs with `torchvision 0.21.0+cu124`, etc.).
+- If the `cu124` index has no wheel for your torch version, use the official
+  selector at <https://pytorch.org/get-started/locally> (Windows · Pip · CUDA)
+  for the exact command.
+- No GPU? The app still runs on CPU — keep it light: model `yolo26n`, pose off,
+  and raise **Skip frames** to 3–5.
+
+### Picking a model for your hardware
+
+| Use case | Model | Notes |
+|----------|-------|-------|
+| Live webcam / CCTV / ESP32-CAM | `yolo26n` or `yolo26s` | fastest; turn pose off for max FPS |
+| Saved-video analysis (accuracy first) | `yolo26m` / `yolo26x` | practical on GPU; slow on CPU |
+
+You do **not** need to train or fine-tune anything: the YOLO26/YOLO11 weights
+are already COCO-pretrained and detect people and dogs out of the box. Only
+fine-tune (on a *custom* stray-dog dataset, never on COCO itself) if you need
+better accuracy on your specific scenes.

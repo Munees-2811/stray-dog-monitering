@@ -1,6 +1,10 @@
 # Stray Dog Monitoring System — dependencies
 
 # Detection / inference (YOLO26)
+# NOTE: on Windows a plain `pip install torch` is CPU-only. For GPU speed,
+# install matched CUDA builds together, e.g.:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# See the "GPU acceleration" section in README.md.
 ultralytics>=8.3.0
 torch>=2.0.0
 torchvision>=0.15.0
