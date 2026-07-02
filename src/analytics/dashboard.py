@@ -518,6 +518,11 @@ function scope() {
   return v === "all" ? SESSIONS : SESSIONS.filter(s => s.session_id === v);
 }
 function sum(arr, f) { return arr.reduce((a, x) => a + f(x), 0); }
+// peak concurrent objects in a session — derived from the instantaneous
+// timeline (bucketed as max), so it means "most in frame at once", never a
+// per-frame running total. Works on older session files too.
+function peakDogs(s) { return Math.max(0, ...s.timeline.map(p => p.dogs)); }
+function peakPersons(s) { return Math.max(0, ...s.timeline.map(p => p.persons)); }
 
 // ── render ───────────────────────────────────────────────────────────
 function render() {
@@ -528,8 +533,10 @@ function render() {
   // KPIs
   const kpis = [
     ["Alerts fired", fmt(sum(S, s => s.alerts_total)), "aggression alerts"],
-    ["Dog detections", fmt(sum(S, s => s.dogs_total)), "per-frame count"],
-    ["Person detections", fmt(sum(S, s => s.persons_total)), "per-frame count"],
+    ["Peak dogs in frame", S.length ? Math.max(0, ...S.map(peakDogs)) : 0,
+      "most seen at once"],
+    ["Peak persons in frame", S.length ? Math.max(0, ...S.map(peakPersons)) : 0,
+      "most seen at once"],
     ["Frames processed", fmt(sum(S, s => s.frames_processed)),
       mmss(sum(S, s => s.duration_s)) + " monitored"],
     ["Peak risk", S.length ? Math.max(...S.map(s => s.peak_risk)).toFixed(2) : "0.00",
@@ -604,15 +611,16 @@ function render() {
       tl.filter((_, i) => i % Math.ceil(tl.length / 25) === 0)
         .map(p => [mmss(p.t), p.dogs, p.persons]));
   } else if (S.length) {
-    $("detSub").textContent = "Total per-frame detections per session";
+    $("detSub").textContent = "Peak concurrent detections per session";
     columnChart($("detChart"), S.map(s => s.session_id), [
-      { name: "dogs", color: blue, values: S.map(s => s.dogs_total) },
-      { name: "persons", color: aqua, values: S.map(s => s.persons_total) },
-    ], { height: 230, tickEvery: Math.ceil(S.length / 6),
+      { name: "peak dogs", color: blue, values: S.map(peakDogs) },
+      { name: "peak persons", color: aqua, values: S.map(peakPersons) },
+    ], { height: 230, tickEvery: Math.ceil(S.length / 6), intTicks: true,
          catLabel: sessLabel });
-    $("detLegend").append(mkKey("dogs", blue, false), mkKey("persons", aqua, false));
-    buildTable($("detTable"), ["Session", "Dogs", "Persons"],
-      S.map(s => [s.session_id, fmt(s.dogs_total), fmt(s.persons_total)]));
+    $("detLegend").append(mkKey("peak dogs", blue, false),
+                          mkKey("peak persons", aqua, false));
+    buildTable($("detTable"), ["Session", "Peak dogs", "Peak persons"],
+      S.map(s => [s.session_id, peakDogs(s), peakPersons(s)]));
   } else {
     $("detChart").replaceChildren(); $("detTable").replaceChildren();
   }
@@ -672,11 +680,11 @@ function render() {
   // Sessions table
   buildTable($("sessionsTable"),
     ["Session", "Started", "Source", "Model", "Alert mode", "Frames",
-     "Dogs", "Persons", "Alerts", "Peak risk", "Avg FPS"],
+     "Peak dogs", "Peak persons", "Alerts", "Peak risk", "Avg FPS"],
     SESSIONS.slice().reverse().map(s => [
       s.session_id, s.started.replace("T", " "), s.source, s.model,
-      s.alert_type.toUpperCase(), fmt(s.frames_processed), fmt(s.dogs_total),
-      fmt(s.persons_total), fmt(s.alerts_total), s.peak_risk.toFixed(2),
+      s.alert_type.toUpperCase(), fmt(s.frames_processed), peakDogs(s),
+      peakPersons(s), fmt(s.alerts_total), s.peak_risk.toFixed(2),
       s.avg_fps.toFixed(1)]));
 
   $("genNote").textContent = "Generated " + GENERATED + " · " +

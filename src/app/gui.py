@@ -425,7 +425,7 @@ class StrayDogMonitorApp:
             "distance": tk.StringVar(value="--"),
         }
         for key, label in [
-            ("frames", "Frames"), ("persons", "Persons"), ("dogs", "Dogs"),
+            ("frames", "Frames"), ("persons", "Persons now"), ("dogs", "Dogs now"),
             ("alerts", "ALERTS"), ("fps", "FPS"), ("distance", "DIST(cm)"),
         ]:
             col = tk.Frame(stats_frame, bg="#252525")
@@ -866,7 +866,11 @@ class StrayDogMonitorApp:
 
         skip = self.skip_frames.get()
         frame_count = processed = 0
-        total_persons = total_dogs = total_alerts = 0
+        total_alerts = 0
+        # counts are instantaneous (how many are in THIS frame), not a running
+        # sum — summing per frame made 4 dogs read as hundreds. Peaks track the
+        # most seen at once across the run.
+        cur_persons = cur_dogs = peak_persons = peak_dogs = 0
         start_time = time.time()
 
         while not self.stop_requested:
@@ -893,8 +897,10 @@ class StrayDogMonitorApp:
             results = pipeline.process_frame(frame)
             annotated = pipeline.draw_results(frame, results)
 
-            total_persons += len(pipeline._last_persons)
-            total_dogs += len(results)
+            cur_persons = len(pipeline._last_persons)
+            cur_dogs = len(results)
+            peak_persons = max(peak_persons, cur_persons)
+            peak_dogs = max(peak_dogs, cur_dogs)
 
             if recorder:
                 recorder.record_frame(results, len(pipeline._last_persons),
@@ -931,8 +937,8 @@ class StrayDogMonitorApp:
             elapsed = time.time() - start_time
             current_fps = processed / elapsed if elapsed > 0 else 0
             self.stats_vars["frames"].set(f"{frame_count:,}")
-            self.stats_vars["persons"].set(f"{total_persons:,}")
-            self.stats_vars["dogs"].set(f"{total_dogs:,}")
+            self.stats_vars["persons"].set(f"{cur_persons}")
+            self.stats_vars["dogs"].set(f"{cur_dogs}")
             self.stats_vars["alerts"].set(f"{total_alerts:,}")
             self.stats_vars["fps"].set(f"{current_fps:.1f}")
             if total_frames > 0:
@@ -963,11 +969,13 @@ class StrayDogMonitorApp:
                 self.export_btn.config(state="normal")
                 messagebox.showinfo("Analysis Complete", model_line +
                                     f"Found {len(self.alerts)} alert(s)!\n"
-                                    f"Frames: {processed:,}  |  Dogs: {total_dogs:,}")
+                                    f"Frames: {processed:,}  |  "
+                                    f"Peak dogs in frame: {peak_dogs}")
             else:
                 messagebox.showinfo("Analysis Complete", model_line +
                                     f"No aggression risk detected.\n"
-                                    f"Frames: {processed:,}  |  Dogs: {total_dogs:,}")
+                                    f"Frames: {processed:,}  |  "
+                                    f"Peak dogs in frame: {peak_dogs}")
 
     # ── analytics ────────────────────────────────────────────────────
 

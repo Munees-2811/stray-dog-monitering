@@ -147,7 +147,10 @@ def ss_init():
         "seek_seconds": 0,       # pending +10s skips
         "video_fps": 30.0,
         "alerts": [],
-        "totals": {"frames": 0, "persons": 0, "dogs": 0, "alerts": 0},
+        # counts are instantaneous (in THIS frame) + peak concurrent, never a
+        # per-frame running sum (that made 4 dogs read as hundreds).
+        "totals": {"frames": 0, "cur_persons": 0, "cur_dogs": 0,
+                   "peak_persons": 0, "peak_dogs": 0, "alerts": 0},
         "run_meta": None,        # dict while a run is active (model, source, …)
         "last_summary": None,
         "esp_last": None,
@@ -176,7 +179,8 @@ def start_monitoring(meta):
     st.session_state.pos_frame = 0
     st.session_state.seek_seconds = 0
     st.session_state.alerts = []
-    st.session_state.totals = {"frames": 0, "persons": 0, "dogs": 0, "alerts": 0}
+    st.session_state.totals = {"frames": 0, "cur_persons": 0, "cur_dogs": 0,
+                               "peak_persons": 0, "peak_dogs": 0, "alerts": 0}
     st.session_state.run_meta = meta
     st.session_state.last_summary = None
     get_pipeline.clear()          # fresh tracker state for a fresh run
@@ -458,8 +462,10 @@ with tab_monitor:
     def show_metrics(fps_val="–", dist_val="–"):
         t = st.session_state.totals
         metric_phs["frames"].metric("Frames", f"{t['frames']:,}")
-        metric_phs["persons"].metric("Persons", f"{t['persons']:,}")
-        metric_phs["dogs"].metric("Dogs", f"{t['dogs']:,}")
+        metric_phs["persons"].metric("Persons now", f"{t['cur_persons']}",
+                                     help=f"Peak concurrent: {t['peak_persons']}")
+        metric_phs["dogs"].metric("Dogs now", f"{t['cur_dogs']}",
+                                  help=f"Peak concurrent: {t['peak_dogs']}")
         metric_phs["alerts"].metric("Alerts", f"{t['alerts']:,}")
         metric_phs["fps"].metric("FPS", fps_val)
         metric_phs["distance"].metric("Dist (cm)", dist_val)
@@ -608,8 +614,10 @@ with tab_monitor:
 
                 t = st.session_state.totals
                 t["frames"] = frame_count
-                t["persons"] += persons_now
-                t["dogs"] += len(results)
+                t["cur_persons"] = persons_now
+                t["cur_dogs"] = len(results)
+                t["peak_persons"] = max(t["peak_persons"], persons_now)
+                t["peak_dogs"] = max(t["peak_dogs"], len(results))
 
                 new_alerts = [r for r in results if r.get("new_alert")]
                 if new_alerts:
@@ -675,8 +683,8 @@ with tab_monitor:
                 "alerts": t["alerts"] > 0,
                 "output_path": output_path,
                 "text": (f"Analysis complete — {t['alerts']} alert(s), "
-                         f"{t['frames']:,} frames, {t['dogs']:,} dog "
-                         f"detections ({m['model']}, "
+                         f"{t['frames']:,} frames, peak {t['peak_dogs']} dog(s) "
+                         f"in frame ({m['model']}, "
                          f"{m['alert_type'].upper()} mode)."),
             }
             st.rerun()
