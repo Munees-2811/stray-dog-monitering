@@ -244,8 +244,13 @@ with st.sidebar:
     risk_threshold = st.slider("Risk threshold", 0.10, 0.95, key="s_risk")
     sustain_frames = st.slider("Sustain frames (N)", 1, 20,
                                int(CFG["risk"]["sustain_frames"]))
-    skip_frames = st.slider("Skip frames", 1, 30,
-                            int(CFG["inference"].get("skip_frames", 1)))
+    skip_frames = st.slider(
+        "Skip frames", 1, 30, int(CFG["inference"].get("skip_frames", 1)),
+        help="Process every Nth frame. 2–4 speeds up video files with little "
+             "loss. Values above ~5 DEGRADE behavior detection: velocity and "
+             "lunge signals compare consecutive processed frames, so at 30 "
+             "'motion' is measured across whole seconds. Live sources don't "
+             "need this — they auto-drop stale frames.")
     save_output = st.toggle("Save annotated output video",
                             value=bool(CFG["inference"].get("save_output", True)))
 
@@ -544,11 +549,20 @@ with tab_monitor:
             cap = MJPEGCapture(f"http://{ip}:81/stream", timeout=5)
         else:
             cap = cv2.VideoCapture(m["open_args"])
+            if m["is_live"]:
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)   # webcam/RTSP: minimal buffer
 
         if not cap.isOpened():
             st.session_state.monitoring = False
             st.error("Could not open the video source.")
             st.stop()
+
+        # Live sources get a threaded latest-frame reader: inference always
+        # sees "now", stale frames are dropped, and lag can never accumulate —
+        # the system stays live at whatever FPS the hardware sustains.
+        if m["is_live"]:
+            from src.sources import LatestFrameCapture
+            cap = LatestFrameCapture(cap)
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         if fps <= 0:

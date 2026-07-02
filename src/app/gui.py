@@ -819,11 +819,15 @@ class StrayDogMonitorApp:
             self.root.after(0, self._clear_display)
 
     def _open_source(self, src):
-        """Return (capture, is_live, stream_url)."""
+        """Return (capture, is_live, stream_url). Live sources are wrapped in
+        a threaded latest-frame reader so slow inference never builds lag."""
+        from src.sources import LatestFrameCapture
         if src == SOURCE_VIDEO:
             return cv2.VideoCapture(self.video_path), False, None
         if src == SOURCE_WEBCAM:
-            return cv2.VideoCapture(int(self.cam_index.get())), True, None
+            cap = cv2.VideoCapture(int(self.cam_index.get()))
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            return LatestFrameCapture(cap), True, None
 
         # ESP32-CAM
         ip = self.esp_ip.get().strip()
@@ -843,7 +847,8 @@ class StrayDogMonitorApp:
                 f"  3. Laptop and ESP32 are on the same WiFi")
         self.log(f"[ESP-CAM] Opening MJPEG stream: {stream_url}")
         self._update_status("Connecting to ESP32-CAM stream ...")
-        return MJPEGCapture(stream_url, timeout=5), True, stream_url
+        return (LatestFrameCapture(MJPEGCapture(stream_url, timeout=5)),
+                True, stream_url)
 
     def _run_loop(self, cap, pipeline, src, is_live, model_name, alert_t):
         # Analytics recorder — observes only; failures never affect monitoring
