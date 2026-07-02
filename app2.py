@@ -222,6 +222,11 @@ with st.sidebar:
         format_func=lambda m: f"{m} — {MODEL_VARIANTS[m]}",
         key="s_model",
         help="COCO-pretrained; auto-downloads on first use.")
+    custom_weights = st.text_input(
+        "Custom weights (.pt) — optional",
+        placeholder=r"runs\detect\straydog_finetune\weights\best.pt",
+        help="Path to fine-tuned weights (see finetune.py). "
+             "When set, this overrides the model selected above.")
     pose_enabled = st.toggle("Use pose model (human skeleton)",
                              value=bool(CFG["detector"].get("pose_model")))
 
@@ -427,9 +432,17 @@ with tab_monitor:
             eff_risk = risk_threshold
             if alert_type == "hr":
                 eff_risk = max(0.10, risk_threshold - hr_drop)
+            # custom fine-tuned weights override the picker when provided
+            run_model = model_name
+            cw = custom_weights.strip().strip('"')
+            if cw:
+                if not Path(cw).exists():
+                    st.error(f"Custom weights not found: {cw}")
+                    st.stop()
+                run_model = cw
             start_monitoring({
                 "src_type": src_type, "open_args": open_args,
-                "source_desc": source_desc, "model": model_name,
+                "source_desc": source_desc, "model": run_model,
                 "pose": CFG["detector"].get("pose_model") if pose_enabled else None,
                 "alert_type": alert_type, "eff_risk": eff_risk,
                 "det_conf": det_conf, "sustain": sustain_frames,
@@ -569,7 +582,7 @@ with tab_monitor:
             out_dir.mkdir(parents=True, exist_ok=True)
             tag = "hr" if m["alert_type"] == "hr" else "norm"
             output_path = str(out_dir / (
-                f"web_{m['model'].replace('.pt', '')}_{tag}_"
+                f"web_{Path(m['model']).stem}_{tag}_"
                 f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"))
             writer = cv2.VideoWriter(output_path,
                                      cv2.VideoWriter_fourcc(*"mp4v"),

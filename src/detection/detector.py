@@ -41,6 +41,25 @@ def _iou(a, b):
     return inter / (area_a + area_b - inter + 1e-6)
 
 
+def _resolve_class_ids(names):
+    """
+    Map a model's own class names to (person_ids, dog_ids).
+
+    Stock COCO weights resolve to ({0}, {16}) as before. Fine-tuned custom
+    models often re-number classes (e.g. dog=0), so ids are matched by NAME:
+    any class containing "dog" (except hot dog) counts as dog, and
+    person/people/human/pedestrian count as person.
+    """
+    person_ids, dog_ids = set(), set()
+    for i, raw in (names or {}).items():
+        n = str(raw).lower().replace("_", " ").strip()
+        if n in ("person", "people", "human", "pedestrian"):
+            person_ids.add(int(i))
+        elif "dog" in n and n not in ("hot dog", "hotdog"):
+            dog_ids.add(int(i))
+    return person_ids, dog_ids
+
+
 class Detector:
     """Ultralytics YOLO26 wrapper returning persons (w/ optional pose) + dogs."""
 
@@ -53,6 +72,12 @@ class Detector:
         self.iou = iou
         self.device = device
         self.pose = YOLO(pose_model) if pose_model else None
+
+        self.person_ids, self.dog_ids = _resolve_class_ids(
+            getattr(self.model, "names", None))
+        if not self.person_ids and not self.dog_ids:
+            # names unavailable — assume the COCO convention
+            self.person_ids, self.dog_ids = {COCO_PERSON}, {COCO_DOG}
 
     def detect(self, frame):
         """
@@ -68,7 +93,7 @@ class Detector:
             source=frame,
             conf=self.conf,
             iou=self.iou,
-            classes=[COCO_PERSON, COCO_DOG],
+            classes=sorted(self.person_ids | self.dog_ids),
             device=self.device,
             verbose=False,
         )
@@ -86,9 +111,9 @@ class Detector:
                     "y2": int(box.xyxy[0][3]),
                     "confidence": float(box.conf[0]),
                 }
-                if cls_id == COCO_PERSON:
+                if cls_id in self.person_ids:
                     persons.append(det)
-                elif cls_id == COCO_DOG:
+                elif cls_id in self.dog_ids:
                     dogs.append(det)
 
         # Pose pass (persons only). Attach keypoints to the matching person box

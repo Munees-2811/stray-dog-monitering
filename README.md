@@ -318,4 +318,55 @@ Notes:
 You do **not** need to train or fine-tune anything: the YOLO26/YOLO11 weights
 are already COCO-pretrained and detect people and dogs out of the box. Only
 fine-tune (on a *custom* stray-dog dataset, never on COCO itself) if you need
-better accuracy on your specific scenes.
+better accuracy on your specific scenes — see the next section.
+
+## Fine-tuning on a project-oriented dataset (optional)
+
+COCO is a *general* 80-class dataset (dog is class 16, person is class 0) —
+that is exactly why stock weights already detect dogs and people, and why
+re-training on COCO is pointless: you'd spend days reproducing the weights you
+downloaded. **Never run `yolo detect train data=coco.yaml ...`** — full COCO is
+a ~20 GB download and 118k images per epoch, which also OOM-kills most laptops
+(`yolo26m` at the default `batch=16` needs more than 4 GB VRAM).
+
+Fine-tune only on a small **stray-dog-specific** dataset:
+
+**Where to get one (pick either):**
+
+1. **Roboflow Universe** (recommended) — go to <https://universe.roboflow.com>
+   and search **"stray dog"** or **"dog detection"**. Pick a dataset with
+   ~500–3,000 images, click *Download Dataset* → format **YOLOv11** — you get a
+   zip with `data.yaml`, `train/`, `valid/`, `test/`. Free account required.
+2. **Your own footage** (best accuracy for your exact scenes) — the app already
+   saves annotated/raw videos to `outputs/`. Extract a few hundred frames,
+   upload them to Roboflow, draw dog/person boxes (its assisted labeling makes
+   this ~1–2 hours for 300–500 images), then export as YOLOv11 like above.
+
+**Sanity check first** (~7 MB built-in mini-dataset, finishes in minutes and
+proves your training setup works — this is the "simple dataset" to test with):
+
+```bash
+python finetune.py --data coco128.yaml --model yolo26n.pt --epochs 5
+```
+
+**Real fine-tune** (defaults sized for a 4 GB GPU: `batch=8`; use `--batch 4`
+or `--batch -1` if you hit out-of-memory):
+
+```bash
+python finetune.py --data path/to/my_dataset/data.yaml --model yolo26n.pt --epochs 60
+```
+
+It prints the path to `best.pt` when done (typically
+`runs/detect/straydog_finetune/weights/best.pt`). ~500 images × 60 epochs takes
+roughly 30–90 minutes on an RTX 3050 — not days.
+
+**Use the fine-tuned model** — paste the `best.pt` path into:
+
+- *Web app*: sidebar → **Custom weights (.pt)** (overrides the model picker)
+- *Desktop app*: section 4 → **Custom weights (.pt)** entry
+- or set `detector.model: runs/detect/straydog_finetune/weights/best.pt`
+  in `config/config.yaml`
+
+One caveat: the risk engine expects both `person` and `dog` detections. If your
+custom dataset contains only dogs, keep using a stock model — or make sure your
+dataset labels people too, with class ids matching `data.yaml`.

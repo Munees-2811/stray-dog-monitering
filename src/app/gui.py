@@ -133,6 +133,7 @@ class StrayDogMonitorApp:
         self.dist_alert_cm = tk.DoubleVar(value=hw.get("proximity_alert_cm", 100.0))
         self._output_dir = inf.get("output_dir", "outputs")
         self._pose_model = d.get("pose_model")
+        self.custom_weights = tk.StringVar(value="")
 
         self._build_ui()
 
@@ -355,6 +356,12 @@ class StrayDogMonitorApp:
                 font=("Consolas", 9), anchor="w").pack(fill="x", padx=15, pady=1)
         tk.Label(parent, text="(auto-downloads on first run)", bg="#252525",
                  fg="#666666", font=("Segoe UI", 8)).pack(anchor="w", padx=15, pady=(4, 4))
+        tk.Label(parent, text="Custom weights (.pt) — overrides the choice above:",
+                 bg="#252525", fg="#888888",
+                 font=("Segoe UI", 8)).pack(anchor="w", padx=15, pady=(4, 0))
+        tk.Entry(parent, textvariable=self.custom_weights,
+                 bg="#1e1e1e", fg="#ffffff", insertbackground="white",
+                 font=("Segoe UI", 9)).pack(fill="x", padx=15, pady=(2, 4))
         tk.Checkbutton(parent, text="Use pose model (human skeleton)",
                        variable=self.pose_enabled,
                        bg="#252525", fg="#cccccc", selectcolor="#1e1e1e",
@@ -735,6 +742,12 @@ class StrayDogMonitorApp:
         try:
             src = self.source_type.get()
             model_name = self.yolo26_variant.get()
+            # custom fine-tuned weights override the picker when provided
+            cw = self.custom_weights.get().strip().strip('"')
+            if cw:
+                if not Path(cw).exists():
+                    raise RuntimeError(f"Custom weights not found: {cw}")
+                model_name = cw
             alert_t = self.alert_type.get()
 
             self._update_status(f"Loading {model_name}...")
@@ -859,7 +872,7 @@ class StrayDogMonitorApp:
             out_dir.mkdir(parents=True, exist_ok=True)
             tag = "hr" if alert_t == "hr" else "norm"
             output_path = str(out_dir / (
-                f"yolo26_{model_name.replace('.pt', '')}_{tag}_"
+                f"{Path(model_name).stem}_{tag}_"
                 f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"))
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
