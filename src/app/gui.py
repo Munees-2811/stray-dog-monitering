@@ -40,7 +40,10 @@ os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "-8")
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import cv2
-cv2.setLogLevel(0)
+try:
+    cv2.setLogLevel(0)   # silence the OpenCV C++ logger (not in every build)
+except AttributeError:
+    pass
 from PIL import Image, ImageTk
 
 from src.config import load_config
