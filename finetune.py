@@ -29,6 +29,7 @@ imgsz 640. If you hit a CUDA out-of-memory error, drop --batch to 4, or use
 """
 
 import argparse
+import os
 from pathlib import Path
 
 
@@ -53,7 +54,19 @@ def main():
                         "overriding any global Ultralytics runs_dir from other projects)")
     p.add_argument("--patience", type=int, default=20,
                    help="early-stop after N epochs without improvement")
+    p.add_argument("--workers", type=int, default=2 if os.name == "nt" else 8,
+                   help="dataloader worker processes. Kept low on Windows by "
+                        "default: each worker loads the CUDA DLLs and commits "
+                        "GBs of virtual memory, so 8 workers triggers "
+                        "'WinError 1455: paging file too small'")
     args = p.parse_args()
+
+    stem = Path(args.model).stem.lower()
+    if stem.endswith(("l", "x")) and stem.startswith(("yolo26", "yolo11")):
+        print(f"[warn] {args.model} is a large model — fine-tuning it needs "
+              f"~3x the memory of inference and OOMs on 8 GB laptop GPUs. "
+              f"Prefer the s/m size (yolo26s.pt / yolo26m.pt); accuracy after "
+              f"fine-tuning is usually close.")
 
     data = args.data
     # Built-in datasets like coco128.yaml have no path separator — Ultralytics
@@ -83,6 +96,7 @@ def main():
         project=args.project,
         name=args.name,
         patience=args.patience,
+        workers=args.workers,
         pretrained=True,
         plots=True,
     )
