@@ -1,0 +1,13 @@
+# Stray Dog Monitoring System — web app theme
+[theme]
+base = "dark"
+primaryColor = "#f59e0b"
+backgroundColor = "#1e1e1e"
+secondaryBackgroundColor = "#252525"
+textColor = "#ffffff"
+
+[server]
+maxUploadSize = 1024   # allow large video uploads (MB)
+
+[browser]
+gatherUsageStats = false

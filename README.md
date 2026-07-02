@@ -63,7 +63,8 @@ a false alarm. No custom training required — YOLO26's COCO weights already kno
 
 ```
 stray-dog-monitering/
-├── run.py                       # launch the desktop app
+├── run.py                       # launch the desktop app (Tkinter)
+├── app2.py                      # launch the web app (Streamlit) + CCTV module
 ├── config/
 │   └── config.yaml              # every threshold / model / hardware setting
 ├── src/
@@ -117,6 +118,28 @@ Then, in the control panel on the left:
 You'll see live bounding boxes coloured by risk (green → amber → red), a per-dog
 risk sparkline, a running dashboard (frames / persons / dogs / alerts / FPS /
 distance), and a timestamped alert log you can export to JSON.
+
+### 2b. Web app (Streamlit) — with CCTV module
+
+```bash
+streamlit run app2.py
+```
+
+Everything the desktop app does, in the browser, plus a **CCTV module**:
+
+- **Live Monitor tab** — Video File (upload or path), Webcam, ESP32-CAM, or
+  **CCTV (RTSP)** sources; the same YOLO26/YOLO11 model picker, Normal/HR alert
+  modes and threshold sliders; live annotated frames, stats row, alert log,
+  browser alert sound, annotated-video saving, alert JSON export, and a +10 s
+  skip for video files.
+- **Analytics Dashboard tab** — the full dashboard rendered in-page (sessions
+  from the desktop and web apps aggregate together), with an HTML download.
+- **CCTV Cameras tab** — register named RTSP/HTTP cameras
+  (`rtsp://user:pass@ip:554/stream1`), test each one, view a snapshot wall of
+  every camera, and pick any of them as a Live Monitor source. Cameras are
+  stored in `data/cameras.json`.
+- **ESP32 sensor** — distance readout in the sidebar plus proximity toasts
+  while monitoring.
 
 ### 3. Analytics dashboard
 
