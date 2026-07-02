@@ -68,12 +68,15 @@ stray-dog-monitering/
 │   └── config.yaml              # every threshold / model / hardware setting
 ├── src/
 │   ├── config.py                # config loader
-│   ├── detection/detector.py    # YOLO26 person+dog (+ pose) wrapper
+│   ├── detection/detector.py    # YOLO26 / YOLO11 person+dog (+ pose) wrapper
 │   ├── tracking/tracker.py      # greedy IoU tracker + per-dog memory
 │   ├── risk/
 │   │   ├── risk_engine.py       # geometric risk scoring
 │   │   └── pose_features.py     # human posture features
 │   ├── sources/mjpeg.py         # robust ESP32-CAM MJPEG reader
+│   ├── analytics/
+│   │   ├── recorder.py          # per-session ML/CV stats recording
+│   │   └── dashboard.py         # offline HTML analytics dashboard
 │   ├── pipeline.py              # end-to-end monitor (also a CLI)
 │   └── app/gui.py               # desktop control-room application
 ├── firmware/
@@ -104,8 +107,9 @@ python run.py
 Then, in the control panel on the left:
 
 1. **Select a source** — Video File, Laptop Webcam, or ESP32-CAM.
-2. **Pick a YOLO26 size** — `yolo26n` (fastest) … `yolo26x` (most accurate).
-   Weights auto-download on first run.
+2. **Pick a model** — `yolo26n` (fastest) … `yolo26x` (most accurate), or the
+   YOLO11 family (`yolo11n` / `yolo11m` / `yolo11x`). Weights auto-download on
+   first run.
 3. **Choose an alert type** — *Normal* or *HR* (high-risk: lower threshold,
    red screen flash + triple beep).
 4. Press **Start Monitoring**.
@@ -114,7 +118,36 @@ You'll see live bounding boxes coloured by risk (green → amber → red), a per
 risk sparkline, a running dashboard (frames / persons / dogs / alerts / FPS /
 distance), and a timestamped alert log you can export to JSON.
 
-### 3. Command-line inference (headless)
+### 3. Analytics dashboard
+
+Every monitoring run is recorded as a session (`data/sessions/*.json`): a
+downsampled risk timeline, per-frame dog/person counts, every alert with its
+feature breakdown, and the model + settings used. Press **Open Analytics
+Dashboard** in the app (section 7) — or generate it headless:
+
+```bash
+python -m src.analytics.dashboard
+```
+
+This writes `outputs/dashboard.html`, a fully offline single-file dashboard
+(no CDN, works without internet) with:
+
+- **KPI row** — alerts fired, dog/person detections, frames processed, peak risk
+- **Risk over time** — per-session risk timeline with the alert threshold and
+  every alert marked (or peak-risk-per-session when viewing all sessions)
+- **Detections** — dogs vs persons across the session
+- **Alerts by hour of day** — when dogs actually get dangerous
+- **Risk distribution** — histogram of observed risk scores
+- **Alert signals** — which risk features (distance / velocity / posture /
+  human pose) actually drive alerts
+- **Sessions table** — every run with its model, source, alert mode and stats
+
+A session filter scopes every chart, each chart has a data-table fallback, and
+the page supports light/dark mode. Recording is fail-safe: analytics only
+observes the pipeline and can never affect detection or alerting. Disable it
+with `analytics.enabled: false` in `config/config.yaml`.
+
+### 4. Command-line inference (headless)
 
 ```bash
 # Single image

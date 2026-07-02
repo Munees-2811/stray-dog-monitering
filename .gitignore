@@ -17,6 +17,7 @@ env/
 
 # Runtime output
 outputs/
+data/
 experiments/
 *.mp4
 *.avi

@@ -5,11 +5,13 @@ A single-window control room for watching a scene and getting warned before a
 stray dog attack happens. Features:
 
   - Source selection ....... Video File / Laptop Webcam / ESP32-CAM stream
-  - YOLO26 model picker .... nano -> xlarge, auto-downloaded on first run
+  - Model picker ........... YOLO26 (n/s/m/l/x) + YOLO11 (n/m/x), auto-downloaded
   - ESP32-CAM + HC-SR04 .... live MJPEG video and ultrasonic proximity alerts
   - Alert type ............. Normal or HR (high-risk: lower threshold, flash+beep)
-  - Live dashboard ......... frames, persons, dogs, alerts, FPS, distance
+  - Live stats bar ......... frames, persons, dogs, alerts, FPS, distance
   - Alert log + JSON export
+  - Analytics .............. sessions recorded to data/sessions/, one-click
+                             offline HTML dashboard (outputs/dashboard.html)
 
 Run with:  python run.py      (or)   python -m src.app.gui
 """
@@ -52,6 +54,15 @@ YOLO26_VARIANTS = {
     "yolo26l.pt": "Large  - more accurate",
     "yolo26x.pt": "XLarge - best accuracy",
 }
+
+YOLO11_VARIANTS = {
+    "yolo11n.pt": "Nano   - fastest (CPU friendly)",
+    "yolo11m.pt": "Medium - balanced",
+    "yolo11x.pt": "XLarge - best accuracy",
+}
+
+# Every model selectable in the app (all COCO-pretrained, auto-downloaded)
+MODEL_VARIANTS = {**YOLO26_VARIANTS, **YOLO11_VARIANTS}
 
 SOURCE_VIDEO = "video"
 SOURCE_WEBCAM = "webcam"
@@ -108,7 +119,7 @@ class StrayDogMonitorApp:
         self.alerts = []
 
         # model + inference settings (seeded from config)
-        default_variant = d["model"] if d["model"] in YOLO26_VARIANTS else "yolo26n.pt"
+        default_variant = d["model"] if d["model"] in MODEL_VARIANTS else "yolo26n.pt"
         self.yolo26_variant = tk.StringVar(value=default_variant)
         self.pose_enabled = tk.BooleanVar(value=bool(d.get("pose_model")))
         self.det_conf = tk.DoubleVar(value=d["conf"])
@@ -320,8 +331,19 @@ class StrayDogMonitorApp:
         self._on_alert_type_change()
 
         # 4. Model
-        self._section_header(parent, "4. YOLO26 Model Size")
+        self._section_header(parent, "4. Detection Model")
+        tk.Label(parent, text="YOLO26", bg="#252525", fg="#888888",
+                 font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=15)
         for variant, desc in YOLO26_VARIANTS.items():
+            tk.Radiobutton(
+                parent, text=f"{variant}  -  {desc}",
+                variable=self.yolo26_variant, value=variant,
+                bg="#252525", fg="#cccccc", selectcolor="#1e1e1e",
+                activebackground="#252525", activeforeground="#f59e0b",
+                font=("Consolas", 9), anchor="w").pack(fill="x", padx=15, pady=1)
+        tk.Label(parent, text="YOLO11", bg="#252525", fg="#888888",
+                 font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=15, pady=(6, 0))
+        for variant, desc in YOLO11_VARIANTS.items():
             tk.Radiobutton(
                 parent, text=f"{variant}  -  {desc}",
                 variable=self.yolo26_variant, value=variant,
@@ -366,6 +388,18 @@ class StrayDogMonitorApp:
         self.progress = ttk.Progressbar(parent, mode="determinate")
         self.progress.pack(fill="x", padx=15, pady=5)
 
+        # 7. Analytics
+        self._section_header(parent, "7. Analytics")
+        tk.Button(parent, text="Open Analytics Dashboard",
+                  command=self.open_dashboard, bg="#7c3aed", fg="white",
+                  font=("Segoe UI", 10, "bold"), relief="flat", padx=15,
+                  pady=8, cursor="hand2").pack(fill="x", padx=15, pady=(0, 4))
+        tk.Label(parent,
+                 text="Aggregates every monitoring session into charts:\n"
+                      "risk timelines, alerts by hour, detections, model stats.",
+                 bg="#252525", fg="#666666", font=("Segoe UI", 8),
+                 justify="left").pack(anchor="w", padx=15, pady=(0, 10))
+
         self._on_source_change()
 
     def _build_display(self, parent):
@@ -403,7 +437,7 @@ class StrayDogMonitorApp:
         self.model_status = tk.StringVar(value="Idle")
         model_frame = tk.Frame(parent, bg="#1a1a1a", pady=4)
         model_frame.pack(fill="x", pady=(0, 5))
-        tk.Label(model_frame, text="YOLO26: ", bg="#1a1a1a", fg="#888888",
+        tk.Label(model_frame, text="Model: ", bg="#1a1a1a", fg="#888888",
                  font=("Segoe UI", 9)).pack(side="left", padx=10)
         tk.Label(model_frame, textvariable=self.model_status, bg="#1a1a1a",
                  fg="#f59e0b", font=("Segoe UI", 9, "bold")).pack(side="left")
@@ -703,7 +737,7 @@ class StrayDogMonitorApp:
             self._update_status(f"Loading {model_name}...")
             self.model_status.set(f"Loading {model_name}")
             self.log(f"Source: {src.upper()} | Alert type: {alert_t.upper()}")
-            self.log(f"Initialising YOLO26: {model_name}")
+            self.log(f"Initialising model: {model_name}")
 
             from src.pipeline import StrayDogMonitor
 
@@ -795,6 +829,22 @@ class StrayDogMonitorApp:
         return MJPEGCapture(stream_url, timeout=5), True, stream_url
 
     def _run_loop(self, cap, pipeline, src, is_live, model_name, alert_t):
+        # Analytics recorder — observes only; failures never affect monitoring
+        recorder = None
+        acfg = self.cfg.get("analytics", {}) or {}
+        if acfg.get("enabled", True):
+            try:
+                from src.analytics import SessionRecorder
+                recorder = SessionRecorder(
+                    model=model_name, source=src, alert_type=alert_t,
+                    risk_threshold=pipeline.risk_threshold,
+                    det_conf=self.det_conf.get(),
+                    sessions_dir=acfg.get("sessions_dir", "data/sessions"),
+                    timeline_max_points=acfg.get("timeline_max_points", 600),
+                )
+            except Exception:
+                recorder = None
+
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) if not is_live else 0
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -843,6 +893,10 @@ class StrayDogMonitorApp:
             total_persons += len(pipeline._last_persons)
             total_dogs += len(results)
 
+            if recorder:
+                recorder.record_frame(results, len(pipeline._last_persons),
+                                      frame_count)
+
             new_alerts_now = [r for r in results if r.get("new_alert")]
             total_alerts += len(new_alerts_now)
 
@@ -886,6 +940,11 @@ class StrayDogMonitorApp:
         if writer:
             writer.release()
 
+        if recorder:
+            saved = recorder.finalize(save=True)
+            if saved and saved.get("_path"):
+                self.log(f"[analytics] Session saved: {saved['_path']}")
+
         total_time = time.time() - start_time
         if self.stop_requested:
             self._update_status(f"Stopped after {processed:,} frames")
@@ -906,6 +965,18 @@ class StrayDogMonitorApp:
                 messagebox.showinfo("Analysis Complete", model_line +
                                     f"No aggression risk detected.\n"
                                     f"Frames: {processed:,}  |  Dogs: {total_dogs:,}")
+
+    # ── analytics ────────────────────────────────────────────────────
+
+    def open_dashboard(self):
+        """Generate the analytics dashboard from saved sessions and open it."""
+        try:
+            from src.analytics import generate_dashboard
+            path = generate_dashboard(open_browser=True)
+            self.log(f"[analytics] Dashboard opened: {path}")
+        except Exception as e:
+            messagebox.showerror("Analytics",
+                                 f"Could not generate the dashboard:\n{e}")
 
     # ── helpers ──────────────────────────────────────────────────────
 

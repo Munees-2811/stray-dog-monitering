@@ -7,7 +7,7 @@ project:
 
 # ── Detection (YOLO26) ────────────────────────────────────────────────
 detector:
-  model: yolo26n.pt       # yolo26n / yolo26s / yolo26m / yolo26l / yolo26x
+  model: yolo26n.pt       # yolo26n/s/m/l/x or yolo11n/m/x (all COCO-pretrained)
   pose_model: yolo11m-pose.pt  # human keypoints; set null to disable pose features
   conf: 0.35              # detection confidence threshold
   iou: 0.45               # NMS IoU threshold
@@ -49,3 +49,10 @@ inference:
   skip_frames: 1          # process every Nth frame (1 = every frame)
   save_output: true       # write annotated video for file/webcam runs
   output_dir: outputs
+
+# ── Analytics (session recording + dashboard) ─────────────────────────
+analytics:
+  enabled: true               # record per-session stats while monitoring
+  sessions_dir: data/sessions # one JSON file per monitoring session
+  dashboard_file: outputs/dashboard.html
+  timeline_max_points: 600    # downsample saved risk timelines to this many points
