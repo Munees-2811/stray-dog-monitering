@@ -463,6 +463,7 @@ with tab_monitor:
                    f"{m['alert_type'].upper()} mode · risk ≥ {m['eff_risk']:.2f}")
 
     # ── live placeholders ─────────────────────────────────────────────
+    compute_ph = st.empty()
     frame_ph = st.empty()
     mc = st.columns(6)
     metric_phs = {k: mc[i].empty() for i, k in enumerate(
@@ -522,6 +523,12 @@ with tab_monitor:
 
         pipeline = get_pipeline(m["model"], m["pose"], m["det_conf"],
                                 m["eff_risk"], m["sustain"])
+
+        compute = getattr(pipeline, "compute", "unknown")
+        if compute.startswith("CPU"):
+            compute_ph.warning(f"⚠ {compute}")
+        else:
+            compute_ph.caption(f"⚡ Compute: {compute}")
 
         # open the source (rerun-safe: video files resume from pos_frame)
         if m["src_type"] == SOURCE_ESP:
@@ -593,6 +600,7 @@ with tab_monitor:
         last_esp_poll = 0.0
         dist_display = "–"
         ended_naturally = False
+        last_display = 0.0   # throttle preview pushes over the websocket
 
         # try/finally is load-bearing: Streamlit interrupts this script at the
         # next UI call when Stop is clicked (or the tab closes), so cleanup
@@ -671,8 +679,19 @@ with tab_monitor:
                 elapsed = time.time() - start_time
                 cur_fps = processed / elapsed if elapsed > 0 else 0.0
 
-                frame_ph.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
-                               use_container_width=True)
+                # Preview: at most ~12 pushes/sec, downscaled to <=960px wide.
+                # Full-res frames still go to the writer/detector — this only
+                # trims websocket/encode cost, which throttles the whole loop
+                # once inference itself is fast.
+                now_disp = time.time()
+                if now_disp - last_display >= 0.08 or new_alerts:
+                    last_display = now_disp
+                    disp = annotated
+                    dh, dw = disp.shape[:2]
+                    if dw > 960:
+                        disp = cv2.resize(disp, (960, int(dh * 960 / dw)))
+                    frame_ph.image(cv2.cvtColor(disp, cv2.COLOR_BGR2RGB),
+                                   use_container_width=True)
                 if processed % 3 == 1:
                     show_metrics(f"{cur_fps:.1f}", dist_display)
                     if total_frames > 0:

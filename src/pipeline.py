@@ -87,6 +87,19 @@ class StrayDogMonitor:
               f"conf={det_conf} risk_threshold={self.risk_threshold} "
               f"sustain={self.sustain_frames} cooldown={self.cooldown_frames}")
 
+        # Surface where inference actually runs — 0.7 FPS mysteries are almost
+        # always "the CUDA build of torch isn't installed in THIS environment".
+        try:
+            import torch
+            if torch.cuda.is_available():
+                self.compute = f"GPU — {torch.cuda.get_device_name(0)}"
+            else:
+                self.compute = ("CPU — no CUDA torch in this environment "
+                                "(expect low FPS; see README 'GPU acceleration')")
+        except Exception:
+            self.compute = "unknown"
+        print(f"[monitor] compute: {self.compute}")
+
     # ── per-frame ────────────────────────────────────────────────────
 
     def process_frame(self, frame):

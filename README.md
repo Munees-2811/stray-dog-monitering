@@ -308,6 +308,28 @@ Notes:
 - No GPU? The app still runs on CPU — keep it light: model `yolo26n`, pose off,
   and raise **Skip frames** to 3–5.
 
+### If FPS is low
+
+When monitoring starts, both apps show a **compute line** (web: above the
+preview; desktop: in the alert log). If it says `CPU — no CUDA torch in this
+environment`, inference is running on the CPU — that is the cause of ~1 FPS,
+and the fix is the CUDA install above **in the same environment the app runs
+from**. Launch through the environment's own interpreter so there is no
+ambiguity:
+
+```powershell
+& .\venv_gpu\Scripts\python.exe -m streamlit run app2.py
+```
+
+Other speed levers, in order of impact:
+
+1. **Pose model off** (sidebar toggle) — pose is a second full inference per
+   frame but contributes only 5% of the risk score. The default pose model is
+   the nano (`yolo11n-pose.pt`) for this reason.
+2. **Skip frames = 2–4** — process every Nth frame; the risk engine's temporal
+   logic tolerates this well.
+3. **Smaller detector** — `yolo26n`/`yolo26s` for live sources.
+
 ### Picking a model for your hardware
 
 | Use case | Model | Notes |

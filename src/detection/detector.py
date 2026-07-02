@@ -3,7 +3,7 @@ Detector — YOLO26 person + dog boxes, with optional human pose.
 
 Two models run in a single ``detect()`` call:
     - yolo26<n/s/m/l/x>.pt   -> person + dog boxes (COCO classes 0 and 16)
-    - yolo11m-pose.pt        -> 17 human keypoints for posture features
+    - yolo11n-pose.pt        -> 17 human keypoints for posture features
 
 The stray-dog risk engine never needs a custom-trained model: stock
 COCO weights already know "person" and "dog", and the aggression signal is
@@ -63,7 +63,7 @@ def _resolve_class_ids(names):
 class Detector:
     """Ultralytics YOLO26 wrapper returning persons (w/ optional pose) + dogs."""
 
-    def __init__(self, model_path="yolo26n.pt", pose_model="yolo11m-pose.pt",
+    def __init__(self, model_path="yolo26n.pt", pose_model="yolo11n-pose.pt",
                  conf=0.35, iou=0.45, device=None):
         if model_path in (None, "", "None"):
             model_path = "yolo26n.pt"

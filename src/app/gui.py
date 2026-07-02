@@ -773,6 +773,7 @@ class StrayDogMonitorApp:
                 config=self.cfg,
             )
             self.model_status.set(f"{model_name} (active)")
+            self.log(f"[compute] {getattr(pipeline, 'compute', 'unknown')}")
 
             cap, is_live, stream_url = self._open_source(src)
 
