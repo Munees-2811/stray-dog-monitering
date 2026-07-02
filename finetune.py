@@ -56,14 +56,20 @@ def main():
     args = p.parse_args()
 
     data = args.data
-    if "path" in Path(data).parts and not Path(data).exists():
+    # Built-in datasets like coco128.yaml have no path separator — Ultralytics
+    # auto-downloads those. Anything that looks like a path must really exist.
+    if ("/" in data or "\\" in data) and not Path(data).exists():
         raise SystemExit(
-            f"\n--data '{data}' looks like the README placeholder — it is not a "
-            f"real dataset.\nDownload one first (see 'Fine-tuning' in README.md, "
-            f"e.g. a Roboflow YOLO export),\nthen point --data at its actual "
-            f"data.yaml, e.g.:\n"
-            r"  python finetune.py --data C:\Users\HP\Downloads\stray-dogs\data.yaml"
-            f" --model yolo26n.pt --epochs 60\n")
+            f"\n--data '{data}' does not exist on this computer.\n\n"
+            f"This must be the data.yaml INSIDE a dataset you have already\n"
+            f"downloaded and extracted (see 'Fine-tuning' in README.md):\n"
+            f"  1. universe.roboflow.com -> search 'stray dog' -> pick a dataset\n"
+            f"  2. Download Dataset -> format YOLOv11 -> download the zip\n"
+            f"  3. Extract the zip and note where data.yaml actually is\n"
+            f"  4. Re-run with that real path, e.g.:\n"
+            r"     python finetune.py --data C:\Users\HP\Downloads\<extracted-folder>\data.yaml"
+            f" --model yolo26s.pt --epochs 60 --batch 16\n\n"
+            f"Tip: Shift + right-click data.yaml in Explorer -> 'Copy as path'.\n")
 
     from ultralytics import YOLO
 
