@@ -47,20 +47,34 @@ def main():
     p.add_argument("--device", default=None,
                    help="0 for first GPU, 'cpu' to force CPU (default: auto)")
     p.add_argument("--name", default="straydog_finetune",
-                   help="run name under runs/detect/")
+                   help="run name under the project dir")
+    p.add_argument("--project", default=str(Path(__file__).parent / "runs" / "detect"),
+                   help="where results are saved (default: THIS repo's runs/detect/, "
+                        "overriding any global Ultralytics runs_dir from other projects)")
     p.add_argument("--patience", type=int, default=20,
                    help="early-stop after N epochs without improvement")
     args = p.parse_args()
+
+    data = args.data
+    if "path" in Path(data).parts and not Path(data).exists():
+        raise SystemExit(
+            f"\n--data '{data}' looks like the README placeholder — it is not a "
+            f"real dataset.\nDownload one first (see 'Fine-tuning' in README.md, "
+            f"e.g. a Roboflow YOLO export),\nthen point --data at its actual "
+            f"data.yaml, e.g.:\n"
+            r"  python finetune.py --data C:\Users\HP\Downloads\stray-dogs\data.yaml"
+            f" --model yolo26n.pt --epochs 60\n")
 
     from ultralytics import YOLO
 
     model = YOLO(args.model)
     results = model.train(
-        data=args.data,
+        data=data,
         epochs=args.epochs,
         batch=args.batch,
         imgsz=args.imgsz,
         device=args.device,
+        project=args.project,
         name=args.name,
         patience=args.patience,
         pretrained=True,
