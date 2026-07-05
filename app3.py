@@ -652,6 +652,21 @@ class MonitorThread(QThread):
             frame_count = processed = total_alerts = 0
             peak_dogs_seen = peak_persons_seen = 0
             alerts = []
+
+            # Warm up CUDA kernels OFF the measured clock. The first GPU
+            # inference compiles/caches kernels and can take several seconds;
+            # left inside the loop it tanks the FPS average (that "0.7 FPS at
+            # frame 6" is warmup, not real speed) and makes real-time pacing
+            # lurch to catch up.
+            try:
+                self.logMsg.emit("Warming up model …")
+                import numpy as _np
+                pipeline.detector.detect(
+                    _np.zeros((min(640, height), min(640, width), 3), _np.uint8))
+            except Exception:
+                pass
+
+            recent = deque()           # timestamps of recently processed frames
             start_time = time.time()
             rt0 = time.time()          # wall-clock origin for real-time pacing
             last_emit = last_esp = 0.0
@@ -731,8 +746,15 @@ class MonitorThread(QThread):
                     writer.write(annotated)
 
                 processed += 1
-                elapsed = time.time() - start_time
-                cur_fps = processed / elapsed if elapsed > 0 else 0.0
+                now_p = time.time()
+                elapsed = now_p - start_time
+                # rolling FPS over the last ~2 s so the number reflects current
+                # throughput, not the (slow) warmup-inflated cumulative average
+                recent.append(now_p)
+                while recent and now_p - recent[0] > 2.0:
+                    recent.popleft()
+                cur_fps = ((len(recent) - 1) / (now_p - recent[0])
+                           if len(recent) > 1 else 0.0)
 
                 now = time.time()
                 if now - last_emit >= 0.033 or new_alerts:
