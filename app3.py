@@ -676,11 +676,11 @@ class MonitorThread(QThread):
                 if not is_live:
                     with self._seek_lock:
                         if self._seek_seconds > 0:
+                            jump = int(self._seek_seconds * fps)
+                            frame_count += jump
+                            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
                             if realtime:
-                                rt0 -= self._seek_seconds   # shift timeline; pacing seeks
-                            else:
-                                frame_count += int(self._seek_seconds * fps)
-                                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+                                rt0 -= self._seek_seconds   # keep pacing consistent
                             self._seek_seconds = 0
 
                 if realtime:
@@ -688,9 +688,17 @@ class MonitorThread(QThread):
                     if target < frame_count:
                         time.sleep(0.003)      # ahead of schedule — wait for the clock
                         continue
-                    if target > frame_count:   # behind — jump ahead, dropping frames
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, target)
-                        frame_count = target
+                    # Drop the frames we're behind by using grab() — cheap (no
+                    # decode) and reliable, unlike cap.set(POS_FRAMES) which
+                    # seeks to a keyframe and is slow on many Windows mp4 files.
+                    ret = True
+                    while frame_count < target:
+                        if not cap.grab():
+                            ret = False
+                            break
+                        frame_count += 1
+                    if not ret:
+                        break
                     ret, frame = cap.read()
                     if not ret:
                         break
