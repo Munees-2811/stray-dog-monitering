@@ -169,6 +169,10 @@ MSME deployments.
   ATTACK RISK, with pack escalation) on the video, in alerts and in analytics.
 - **Logs tab** — timestamped application log (alerts highlighted), mirrored
   to `data/logs/app_YYYYMMDD.log`.
+- **Real-time playback** — a video file now plays at its *true speed* by
+  dropping frames the pipeline can't keep up with (like a live camera), so it
+  never crawls frame-by-frame on a slow PC. Toggle it off to analyse every
+  frame instead. Live sources are always real-time.
 - **Speed controls** — an *Inference size* picker (640/512/416/320; smaller =
   faster) next to the model, on top of pose-off and skip-frames; the preview
   path is downscaled and throttled so display never limits the pipeline.

@@ -643,10 +643,17 @@ class MonitorThread(QThread):
                                          fps, (width, height))
 
             skip = m["skip"]
+            # Real-time playback (video files only): pace to the source FPS and
+            # DROP frames the pipeline can't keep up with, so the video always
+            # plays at true speed instead of crawling frame-by-frame. Live
+            # sources already do this via LatestFrameCapture. When off, every
+            # frame is processed (thorough analysis, but as fast as hardware).
+            realtime = bool(m.get("realtime", True)) and not is_live
             frame_count = processed = total_alerts = 0
             peak_dogs_seen = peak_persons_seen = 0
             alerts = []
             start_time = time.time()
+            rt0 = time.time()          # wall-clock origin for real-time pacing
             last_emit = last_esp = 0.0
             dist_txt = "–"
 
@@ -654,18 +661,34 @@ class MonitorThread(QThread):
                 if not is_live:
                     with self._seek_lock:
                         if self._seek_seconds > 0:
-                            frame_count += int(self._seek_seconds * fps)
+                            if realtime:
+                                rt0 -= self._seek_seconds   # shift timeline; pacing seeks
+                            else:
+                                frame_count += int(self._seek_seconds * fps)
+                                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
                             self._seek_seconds = 0
-                            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
 
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                frame_count += 1
-                if (frame_count - 1) % skip != 0:
-                    if writer:
-                        writer.write(frame)
-                    continue
+                if realtime:
+                    target = int((time.time() - rt0) * fps)
+                    if target < frame_count:
+                        time.sleep(0.003)      # ahead of schedule — wait for the clock
+                        continue
+                    if target > frame_count:   # behind — jump ahead, dropping frames
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, target)
+                        frame_count = target
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    frame_count += 1
+                else:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    frame_count += 1
+                    if (frame_count - 1) % skip != 0:
+                        if writer:
+                            writer.write(frame)
+                        continue
 
                 results = pipeline.process_frame(frame)
                 annotated = pipeline.draw_results(frame, results)
@@ -906,9 +929,17 @@ class MainWindow(QMainWindow):
                                            int(r["sustain_frames"]))
         self.skip_slider = self._slider(g, "Skip frames", 1, 30,
                                         int(inf.get("skip_frames", 1)))
-        hint = QLabel("Skip 2–4 speeds up videos; above ~5 degrades motion signals.")
+        hint = QLabel("Skip 2–4 speeds up videos; above ~5 degrades motion signals. "
+                      "(Ignored in real-time mode — it drops frames automatically.)")
         hint.setObjectName("hint"); hint.setWordWrap(True)
         g.addWidget(hint)
+        self.realtime_check = QCheckBox("Real-time playback (play at true speed, drop frames)")
+        self.realtime_check.setChecked(True)
+        g.addWidget(self.realtime_check)
+        rt_hint = QLabel("On: video plays at actual speed even on a slow PC "
+                         "(analyses fewer frames). Off: analyse every frame.")
+        rt_hint.setObjectName("hint"); rt_hint.setWordWrap(True)
+        g.addWidget(rt_hint)
         self.save_check = QCheckBox("Save annotated output video")
         self.save_check.setChecked(bool(inf.get("save_output", True)))
         g.addWidget(self.save_check)
@@ -1570,6 +1601,7 @@ class MainWindow(QMainWindow):
             "sustain": int(self._sval(self.sustain_slider)),
             "skip": int(self._sval(self.skip_slider)),
             "imgsz": self.imgsz_combo.currentData(),
+            "realtime": self.realtime_check.isChecked(),
             "save": self.save_check.isChecked() and not is_live,
             "esp_ip": self.esp_edit.text().strip(),
             "esp_poll": self.esp_poll_check.isChecked() and bool(self.esp_edit.text().strip()),
