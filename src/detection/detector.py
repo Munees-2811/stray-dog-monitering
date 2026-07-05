@@ -74,6 +74,16 @@ class Detector:
         self.imgsz = int(imgsz) if imgsz else 640
         self.pose = YOLO(pose_model) if pose_model else None
 
+        # FP16 on GPU ~doubles throughput with negligible accuracy loss. Only
+        # enable it on CUDA — half precision on CPU is unsupported / slower.
+        self.half = False
+        if str(device).lower() != "cpu":
+            try:
+                import torch
+                self.half = bool(torch.cuda.is_available())
+            except Exception:
+                self.half = False
+
         self.person_ids, self.dog_ids = _resolve_class_ids(
             getattr(self.model, "names", None))
         if not self.person_ids and not self.dog_ids:
@@ -95,6 +105,7 @@ class Detector:
             conf=self.conf,
             iou=self.iou,
             imgsz=self.imgsz,
+            half=self.half,
             classes=sorted(self.person_ids | self.dog_ids),
             device=self.device,
             verbose=False,
@@ -126,6 +137,7 @@ class Detector:
                 conf=self.conf,
                 iou=self.iou,
                 imgsz=self.imgsz,
+                half=self.half,
                 device=self.device,
                 verbose=False,
             )
