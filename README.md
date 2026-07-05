@@ -159,9 +159,20 @@ MSME deployments.
   saving, +10 s skip. A **compute line** under the video shows GPU vs CPU.
 - **CCTV Cameras tab** — register/test/remove RTSP cameras (shared
   `data/cameras.json` with the web app); any camera is selectable as a source.
-- **Analytics tab** — the full dashboard rendered *inside the app* (session
-  filter, tooltips and all), with a Refresh button; falls back to opening in
-  the browser if `PyQt6-WebEngine` isn't installed.
+- **Dashboard tab** — native PyQt charts (no web view, no load wait): KPI
+  tiles, a **live real-time panel** fed straight from the running pipeline,
+  risk timelines, alerts-by-hour, risk distribution, alert signals, alert
+  behaviors and a sessions table; auto-refreshes every 2 s and the moment a
+  run finishes. "Export HTML" still produces the standalone dashboard file.
+- **Behavior engine** — every dog is labelled with what it is doing (idle /
+  roaming / running / close to person / approaching / lunging / charging /
+  ATTACK RISK, with pack escalation) on the video, in alerts and in analytics.
+- **Logs tab** — timestamped application log (alerts highlighted), mirrored
+  to `data/logs/app_YYYYMMDD.log`.
+- **Speed controls** — an *Inference size* picker (640/512/416/320; smaller =
+  faster) next to the model, on top of pose-off and skip-frames; the preview
+  path is downscaled and throttled so display never limits the pipeline.
+- Collapsible sidebar sections (chevron headers) keep the controls compact.
 - Detection runs in a background thread (the window never freezes) and live
   sources use the threaded latest-frame reader, so the feed can't lag behind.
 

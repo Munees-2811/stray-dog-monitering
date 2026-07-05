@@ -62,6 +62,7 @@ class SessionRecorder:
                         "frame": frame_number,
                         "track_id": r["track_id"],
                         "risk": round(r["risk"], 3),
+                        "behavior": r.get("behavior_label", ""),
                         "features": r.get("features", {}),
                         "alert_type": self.alert_type,
                     })

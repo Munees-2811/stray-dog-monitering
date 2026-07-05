@@ -21,7 +21,7 @@ import cv2
 from src.config import load_config
 from src.detection import Detector
 from src.tracking import IoUTracker
-from src.risk import RiskEngine
+from src.risk import RiskEngine, classify_behavior
 
 
 class StrayDogMonitor:
@@ -46,7 +46,7 @@ class StrayDogMonitor:
     def __init__(self, detector_path=None, pose_model="__default__",
                  det_conf=None, risk_threshold=None, smoothing_alpha=None,
                  sustain_frames=None, cooldown_frames=None, device=None,
-                 config=None):
+                 imgsz=None, config=None):
         cfg = config or load_config()
         d, t, r = cfg["detector"], cfg["tracker"], cfg["risk"]
 
@@ -54,6 +54,7 @@ class StrayDogMonitor:
         if pose_model == "__default__":
             pose_model = d.get("pose_model")
         det_conf = d["conf"] if det_conf is None else det_conf
+        imgsz = imgsz or d.get("imgsz", 640)
         device = device or cfg.get("project", {}).get("device", "auto")
         if device == "auto":
             device = None  # let ultralytics choose
@@ -64,6 +65,7 @@ class StrayDogMonitor:
             conf=det_conf,
             iou=d["iou"],
             device=device,
+            imgsz=imgsz,
         )
         self.risk_engine = RiskEngine(
             weights=r.get("weights"),
@@ -140,7 +142,14 @@ class StrayDogMonitor:
             if new_alert:
                 t.last_alert_frame = self.frame_idx
 
+            # Behavior engine: name what the dog is doing (additive layer —
+            # consumes the same evidence, never feeds back into risk/alerts)
+            behavior_label, behavior_sev = classify_behavior(
+                t, features, t.risk_ema, self.risk_threshold, len(dogs))
+
             results.append({
+                "behavior_label": behavior_label,
+                "behavior_severity": behavior_sev,
                 "x1": t.box["x1"], "y1": t.box["y1"],
                 "x2": t.box["x2"], "y2": t.box["y2"],
                 "track_id": t.id,
@@ -221,11 +230,11 @@ class StrayDogMonitor:
         for r in results:
             color = self._dog_color(r["risk"])
             thickness = 3 if r["alert"] else 2
+            behavior = r.get("behavior_label", "")
             if r["alert"]:
-                label = f"ALERT dog#{r['track_id']} risk {r['risk']:.2f}"
+                label = f"ALERT dog#{r['track_id']} {behavior} {r['risk']:.2f}"
             else:
-                label = (f"dog#{r['track_id']} risk {r['risk']:.2f} "
-                         f"[{r['sustained']}/{r['sustain_target']}]")
+                label = f"dog#{r['track_id']} {behavior} {r['risk']:.2f}"
             self._draw_box(
                 annotated, r["x1"], r["y1"], r["x2"], r["y2"],
                 color, thickness=thickness, label=label,

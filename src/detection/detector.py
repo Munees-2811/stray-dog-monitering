@@ -64,13 +64,14 @@ class Detector:
     """Ultralytics YOLO26 wrapper returning persons (w/ optional pose) + dogs."""
 
     def __init__(self, model_path="yolo26n.pt", pose_model="yolo11n-pose.pt",
-                 conf=0.35, iou=0.45, device=None):
+                 conf=0.35, iou=0.45, device=None, imgsz=640):
         if model_path in (None, "", "None"):
             model_path = "yolo26n.pt"
         self.model = YOLO(model_path)
         self.conf = conf
         self.iou = iou
         self.device = device
+        self.imgsz = int(imgsz) if imgsz else 640
         self.pose = YOLO(pose_model) if pose_model else None
 
         self.person_ids, self.dog_ids = _resolve_class_ids(
@@ -93,6 +94,7 @@ class Detector:
             source=frame,
             conf=self.conf,
             iou=self.iou,
+            imgsz=self.imgsz,
             classes=sorted(self.person_ids | self.dog_ids),
             device=self.device,
             verbose=False,
@@ -123,6 +125,7 @@ class Detector:
                 source=frame,
                 conf=self.conf,
                 iou=self.iou,
+                imgsz=self.imgsz,
                 device=self.device,
                 verbose=False,
             )
