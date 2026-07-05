@@ -65,6 +65,7 @@ a false alarm. No custom training required — YOLO26's COCO weights already kno
 stray-dog-monitering/
 ├── run.py                       # launch the desktop app (Tkinter)
 ├── app2.py                      # launch the web app (Streamlit) + CCTV module
+├── app3.py                      # launch the native desktop app (PyQt6) + CCTV
 ├── config/
 │   └── config.yaml              # every threshold / model / hardware setting
 ├── src/
@@ -140,6 +141,31 @@ Everything the desktop app does, in the browser, plus a **CCTV module**:
   stored in `data/cameras.json`.
 - **ESP32 sensor** — distance readout in the sidebar plus proximity toasts
   while monitoring.
+
+### 2c. Native desktop app (PyQt6) — fully local, fastest
+
+```bash
+python app3.py
+```
+
+The same features as the Streamlit app, but as a native window with **no web
+server and no browser** — the simplest thing to run locally, and the fastest
+(no websocket between the model and the display). Recommended for on-site /
+MSME deployments.
+
+- **Live Monitor** — Video file / Webcam / ESP32-CAM / CCTV (RTSP) sources; the
+  YOLO26 + YOLO11 model picker and custom-weights field; Normal/HR alerts;
+  live annotated video, a stats row, alert log + JSON export, annotated-video
+  saving, +10 s skip. A **compute line** under the video shows GPU vs CPU.
+- **CCTV Cameras tab** — register/test/remove RTSP cameras (shared
+  `data/cameras.json` with the web app); any camera is selectable as a source.
+- **Analytics** — one click builds the dashboard and opens it in your browser.
+- Detection runs in a background thread (the window never freezes) and live
+  sources use the threaded latest-frame reader, so the feed can't lag behind.
+
+> Run it with the **same Python that has CUDA torch** (e.g.
+> `& .\venv_gpu\Scripts\python.exe app3.py`) — the compute line tells you
+> whether you got the GPU.
 
 ### 3. Analytics dashboard
 

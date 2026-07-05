@@ -21,3 +21,6 @@ Pillow>=10.0.0
 
 # Web app (streamlit run app2.py)
 streamlit>=1.36.0
+
+# Native desktop app (python app3.py)
+PyQt6>=6.5.0
