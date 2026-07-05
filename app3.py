@@ -43,7 +43,7 @@ try:
 except AttributeError:
     pass
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
 from PyQt6.QtGui import QImage, QPixmap, QFont
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QPushButton, QComboBox,
@@ -51,6 +51,14 @@ from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QTabWidget, QScrollArea, QVBoxLayout,
     QHBoxLayout, QGridLayout, QGroupBox, QFrame, QSizePolicy, QButtonGroup,
 )
+
+# In-app dashboard rendering. Imported at module level on purpose: Qt requires
+# WebEngine to be initialised before the QApplication is created.
+try:
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+    HAS_WEBENGINE = True
+except Exception:                     # PyQt6-WebEngine not installed
+    HAS_WEBENGINE = False
 
 from src.config import load_config, PROJECT_ROOT
 
@@ -74,29 +82,60 @@ MODEL_VARIANTS = {
 SRC_VIDEO, SRC_WEBCAM, SRC_ESP, SRC_CCTV = "video", "webcam", "espcam", "cctv"
 CAMERAS_FILE = PROJECT_ROOT / "data" / "cameras.json"
 
+# The embedded WebEngine view defaults to a light color-scheme; the dashboard
+# reads its colors from CSS variables at render time, so applying the dark
+# palette inline and re-rendering gives the designed dark theme (not an
+# auto-inverted approximation).
+_DASH_DARK_JS = """
+(function () {
+  const v = {'--surface-1':'#1a1a19','--page':'#0d0d0d','--text-primary':'#ffffff',
+    '--text-secondary':'#c3c2b7','--text-muted':'#898781','--grid':'#2c2c2a',
+    '--baseline':'#383835','--border':'rgba(255,255,255,0.10)',
+    '--series-1':'#3987e5','--series-2':'#199e70','--critical':'#d03b3b'};
+  for (const k in v) document.body.style.setProperty(k, v[k]);
+  if (typeof render === 'function') render();
+})();
+"""
+
 DARK_QSS = """
 QWidget { background: #1e1e1e; color: #e8e8e8; font-family: 'Segoe UI', sans-serif; font-size: 13px; }
-QScrollArea, QScrollArea > QWidget > QWidget { background: #252525; }
-QGroupBox { border: 1px solid #3a3a3a; border-radius: 6px; margin-top: 10px; padding-top: 8px; }
-QGroupBox::title { subcontrol-origin: margin; left: 10px; color: #f59e0b; font-weight: 600; }
-QPushButton { background: #3a3a3a; border: none; border-radius: 6px; padding: 7px 12px; }
+QScrollArea { background: #232323; border: none; }
+QScrollArea > QWidget > QWidget { background: #232323; }
+QGroupBox { background: #262626; border: 1px solid #383838; border-radius: 8px;
+            margin-top: 12px; padding: 10px 8px 8px 8px; }
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px;
+                   color: #f59e0b; font-weight: 600; }
+QGroupBox QWidget { background: #262626; }
+QPushButton { background: #3a3a3a; border: none; border-radius: 6px; padding: 8px 12px; }
 QPushButton:hover { background: #454545; }
 QPushButton:disabled { background: #2a2a2a; color: #666; }
-QPushButton#primary { background: #16a34a; color: white; font-weight: 600; }
+QPushButton#primary { background: #16a34a; color: white; font-weight: 600; padding: 10px; }
 QPushButton#primary:hover { background: #18b352; }
 QPushButton#danger { background: #dc2626; color: white; }
 QPushButton#accent { background: #7c3aed; color: white; }
-QLineEdit, QComboBox, QSpinBox, QTextEdit { background: #1a1a1a; border: 1px solid #3a3a3a; border-radius: 5px; padding: 5px; }
+QLineEdit, QComboBox, QSpinBox, QTextEdit { background: #1a1a1a; border: 1px solid #3a3a3a;
+                                            border-radius: 5px; padding: 6px; }
 QComboBox::drop-down { border: none; }
 QComboBox QAbstractItemView { background: #1a1a1a; selection-background-color: #0078d4; }
-QSlider::groove:horizontal { height: 4px; background: #3a3a3a; border-radius: 2px; }
-QSlider::handle:horizontal { background: #f59e0b; width: 14px; margin: -6px 0; border-radius: 7px; }
+QSlider { min-height: 24px; }
+QSlider::groove:horizontal { height: 5px; background: #3a3a3a; border-radius: 2px; }
+QSlider::handle:horizontal { background: #f59e0b; width: 16px; margin: -6px 0; border-radius: 8px; }
 QSlider::sub-page:horizontal { background: #f59e0b; border-radius: 2px; }
-QTabBar::tab { background: #252525; padding: 8px 16px; border-top-left-radius: 6px; border-top-right-radius: 6px; }
+QTabBar::tab { background: #252525; padding: 9px 18px; border-top-left-radius: 6px;
+               border-top-right-radius: 6px; margin-right: 2px; }
 QTabBar::tab:selected { background: #1e1e1e; color: #f59e0b; }
+QTabWidget::pane { border: none; }
+QScrollBar:vertical { background: #1e1e1e; width: 12px; border-radius: 6px; }
+QScrollBar::handle:vertical { background: #4a4a4a; min-height: 40px; border-radius: 5px; margin: 2px; }
+QScrollBar::handle:vertical:hover { background: #5c5c5c; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar:horizontal { background: #1e1e1e; height: 12px; }
+QScrollBar::handle:horizontal { background: #4a4a4a; min-width: 40px; border-radius: 5px; margin: 2px; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 QLabel#stat { font-size: 24px; font-weight: 600; }
 QLabel#statlabel { color: #888; font-size: 11px; }
 QLabel#section { color: #f59e0b; font-weight: 600; font-size: 14px; }
+QLabel#hint { color: #777; font-size: 11px; }
 """
 
 
@@ -379,9 +418,11 @@ class MainWindow(QMainWindow):
 
         tabs = QTabWidget()
         tabs.addTab(self._build_monitor_tab(), "🎥  Live Monitor")
+        tabs.addTab(self._build_analytics_tab(), "📊  Analytics")
         tabs.addTab(self._build_cctv_tab(), "🎦  CCTV Cameras")
         self.tabs = tabs
-        tabs.currentChanged.connect(lambda _: self._refresh_cctv_combo())
+        self.TAB_ANALYTICS = 1
+        tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(tabs)
 
     # ---- monitor tab ----
@@ -398,115 +439,132 @@ class MainWindow(QMainWindow):
         pl.setSpacing(6)
         pl.setContentsMargins(12, 8, 18, 8)   # right margin clears the scrollbar
 
-        pl.addWidget(self._section("1 · Source"))
+        # 1 · Source
+        g = self._group(pl, "1 · Source")
         self.src_group = QButtonGroup(self)
-        for key, label in [(SRC_VIDEO, "Video file"), (SRC_WEBCAM, "Webcam"),
-                           (SRC_ESP, "ESP32-CAM"), (SRC_CCTV, "CCTV (RTSP)")]:
+        src_row = QHBoxLayout(); src_row.setSpacing(10)
+        for key, label in [(SRC_VIDEO, "Video"), (SRC_WEBCAM, "Webcam"),
+                           (SRC_ESP, "ESP32"), (SRC_CCTV, "CCTV")]:
             rb = QRadioButton(label)
             rb.setProperty("srckey", key)
             if key == SRC_VIDEO:
                 rb.setChecked(True)
             rb.toggled.connect(self._on_source_change)
             self.src_group.addButton(rb)
-            pl.addWidget(rb)
+            src_row.addWidget(rb)
+        src_row.addStretch()
+        srw = QWidget(); srw.setLayout(src_row); g.addWidget(srw)
 
         # video sub-panel
         self.video_box = QWidget(); vlay = QVBoxLayout(self.video_box)
-        vlay.setContentsMargins(0, 0, 0, 0)
+        vlay.setContentsMargins(0, 4, 0, 0); vlay.setSpacing(6)
         browse = QPushButton("Browse local video…"); browse.clicked.connect(self._browse_video)
         vlay.addWidget(browse)
         self.path_edit = QLineEdit(); self.path_edit.setPlaceholderText(r"…or paste C:\videos\clip.mp4")
         vlay.addWidget(self.path_edit)
-        self.path_label = QLabel("No video selected"); self.path_label.setStyleSheet("color:#888;")
+        self.path_label = QLabel("No video selected"); self.path_label.setObjectName("hint")
         vlay.addWidget(self.path_label)
-        pl.addWidget(self.video_box)
+        g.addWidget(self.video_box)
 
         # webcam sub-panel
         self.webcam_box = QWidget(); wlay = QHBoxLayout(self.webcam_box)
-        wlay.setContentsMargins(0, 0, 0, 0)
+        wlay.setContentsMargins(0, 4, 0, 0)
         wlay.addWidget(QLabel("Camera index:"))
         self.cam_spin = QSpinBox(); self.cam_spin.setRange(0, 10)
         wlay.addWidget(self.cam_spin); wlay.addStretch()
-        pl.addWidget(self.webcam_box)
+        g.addWidget(self.webcam_box)
 
         # cctv sub-panel
         self.cctv_box = QWidget(); clay = QVBoxLayout(self.cctv_box)
-        clay.setContentsMargins(0, 0, 0, 0)
+        clay.setContentsMargins(0, 4, 0, 0); clay.setSpacing(6)
         clay.addWidget(QLabel("Registered camera:"))
         self.cctv_combo = QComboBox(); clay.addWidget(self.cctv_combo)
         self.cctv_manual = QLineEdit(); self.cctv_manual.setPlaceholderText("…or rtsp://user:pass@ip:554/stream1")
         clay.addWidget(self.cctv_manual)
-        pl.addWidget(self.cctv_box)
+        g.addWidget(self.cctv_box)
 
-        pl.addWidget(self._section("2 · Detection model"))
+        # 2 · Detection model
+        g = self._group(pl, "2 · Detection model")
         self.model_combo = QComboBox()
         for k, v in MODEL_VARIANTS.items():
             self.model_combo.addItem(f"{k} — {v}", k)
         default = d["model"] if d["model"] in MODEL_VARIANTS else "yolo26n.pt"
         self.model_combo.setCurrentIndex(list(MODEL_VARIANTS).index(default))
-        pl.addWidget(self.model_combo)
+        g.addWidget(self.model_combo)
         self.custom_edit = QLineEdit()
-        self.custom_edit.setPlaceholderText(r"Custom weights .pt (overrides above) — runs\detect\…\best.pt")
-        pl.addWidget(self.custom_edit)
+        self.custom_edit.setPlaceholderText(r"Custom weights .pt (overrides above)")
+        g.addWidget(self.custom_edit)
         self.pose_check = QCheckBox("Use pose model (human skeleton)")
         self.pose_check.setChecked(bool(d.get("pose_model")))
-        pl.addWidget(self.pose_check)
+        g.addWidget(self.pose_check)
 
-        pl.addWidget(self._section("3 · Alert type"))
+        # 3 · Alert type
+        g = self._group(pl, "3 · Alert type")
         self.alert_group = QButtonGroup(self)
         row = QHBoxLayout()
         self.rb_normal = QRadioButton("Normal"); self.rb_normal.setChecked(True)
         self.rb_hr = QRadioButton("HR (high-risk)")
         self.alert_group.addButton(self.rb_normal); self.alert_group.addButton(self.rb_hr)
         row.addWidget(self.rb_normal); row.addWidget(self.rb_hr); row.addStretch()
-        rw = QWidget(); rw.setLayout(row); pl.addWidget(rw)
+        rw = QWidget(); rw.setLayout(row); g.addWidget(rw)
         self.sound_check = QCheckBox("Alert sound"); self.sound_check.setChecked(True)
-        pl.addWidget(self.sound_check)
+        g.addWidget(self.sound_check)
 
-        pl.addWidget(self._section("4 · Thresholds"))
-        self.conf_slider = self._slider(pl, "Detection confidence", 10, 95,
+        # 4 · Thresholds
+        g = self._group(pl, "4 · Thresholds")
+        self.conf_slider = self._slider(g, "Detection confidence", 10, 95,
                                         int(d["conf"] * 100), factor=100)
-        self.risk_slider = self._slider(pl, "Risk threshold", 10, 95,
+        self.risk_slider = self._slider(g, "Risk threshold", 10, 95,
                                         int(r["threshold"] * 100), factor=100)
-        self.sustain_slider = self._slider(pl, "Sustain frames (N)", 1, 20,
+        self.sustain_slider = self._slider(g, "Sustain frames (N)", 1, 20,
                                            int(r["sustain_frames"]))
-        self.skip_slider = self._slider(pl, "Skip frames", 1, 30,
+        self.skip_slider = self._slider(g, "Skip frames", 1, 30,
                                         int(inf.get("skip_frames", 1)))
+        hint = QLabel("Skip 2–4 speeds up videos; above ~5 degrades motion signals.")
+        hint.setObjectName("hint"); hint.setWordWrap(True)
+        g.addWidget(hint)
         self.save_check = QCheckBox("Save annotated output video")
         self.save_check.setChecked(bool(inf.get("save_output", True)))
-        pl.addWidget(self.save_check)
+        g.addWidget(self.save_check)
 
-        pl.addWidget(self._section("5 · ESP32 sensor (HC-SR04)"))
+        # 5 · ESP32 sensor
+        g = self._group(pl, "5 · ESP32 sensor (HC-SR04)")
         erow = QHBoxLayout()
         erow.addWidget(QLabel("IP:"))
         self.esp_edit = QLineEdit(hw.get("esp_ip", "")); erow.addWidget(self.esp_edit)
-        ew = QWidget(); ew.setLayout(erow); pl.addWidget(ew)
-        self.prox_slider = self._slider(pl, "Proximity alert (cm)", 10, 400,
+        ew = QWidget(); ew.setLayout(erow); g.addWidget(ew)
+        self.prox_slider = self._slider(g, "Proximity alert (cm)", 10, 400,
                                         int(hw.get("proximity_alert_cm", 100)))
         self.esp_poll_check = QCheckBox("Poll distance while monitoring")
         self.esp_poll_check.setChecked(bool(hw.get("esp_ip")))
-        pl.addWidget(self.esp_poll_check)
+        g.addWidget(self.esp_poll_check)
         read_btn = QPushButton("Read distance now"); read_btn.clicked.connect(self._read_distance)
-        pl.addWidget(read_btn)
+        g.addWidget(read_btn)
 
-        pl.addWidget(self._section("6 · Run"))
+        # 6 · Run
+        g = self._group(pl, "6 · Run")
         self.start_btn = QPushButton("▶  Start monitoring"); self.start_btn.setObjectName("primary")
         self.start_btn.clicked.connect(self._start)
-        pl.addWidget(self.start_btn)
+        g.addWidget(self.start_btn)
         run_row = QHBoxLayout()
         self.stop_btn = QPushButton("■  Stop"); self.stop_btn.setObjectName("danger")
         self.stop_btn.setEnabled(False); self.stop_btn.clicked.connect(self._stop)
         self.fwd_btn = QPushButton("⏩  +10 s"); self.fwd_btn.setEnabled(False)
         self.fwd_btn.clicked.connect(lambda: self.thread and self.thread.request_skip())
         run_row.addWidget(self.stop_btn); run_row.addWidget(self.fwd_btn)
-        rr = QWidget(); rr.setLayout(run_row); pl.addWidget(rr)
-        dash_btn = QPushButton("📊  Open analytics dashboard"); dash_btn.setObjectName("accent")
+        rr = QWidget(); rr.setLayout(run_row); g.addWidget(rr)
+        dash_btn = QPushButton("📊  Analytics dashboard"); dash_btn.setObjectName("accent")
         dash_btn.clicked.connect(self._open_dashboard)
-        pl.addWidget(dash_btn)
+        g.addWidget(dash_btn)
         pl.addStretch()
 
-        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(panel)
-        scroll.setFixedWidth(360)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(panel)
+        scroll.setFixedWidth(370)
+        # vertical-only scrolling: content always fits the width, wheel scrolls
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         root.addWidget(scroll)
 
         # right: display + stats + log
@@ -560,6 +618,83 @@ class MainWindow(QMainWindow):
         self._on_source_change()
         return page
 
+    # ---- analytics tab ----
+
+    def _build_analytics_tab(self):
+        page = QWidget(); v = QVBoxLayout(page)
+        v.setContentsMargins(10, 10, 10, 10); v.setSpacing(8)
+
+        bar = QHBoxLayout()
+        title = QLabel("Analytics dashboard"); title.setObjectName("section")
+        bar.addWidget(title)
+        self.analytics_info = QLabel(""); self.analytics_info.setObjectName("hint")
+        bar.addWidget(self.analytics_info)
+        bar.addStretch()
+        refresh_btn = QPushButton("↻  Refresh")
+        refresh_btn.clicked.connect(self._refresh_analytics)
+        bar.addWidget(refresh_btn)
+        ext_btn = QPushButton("Open in browser")
+        ext_btn.clicked.connect(self._open_dashboard_browser)
+        bar.addWidget(ext_btn)
+        bw = QWidget(); bw.setLayout(bar); v.addWidget(bw)
+
+        if HAS_WEBENGINE:
+            self.dash_view = QWebEngineView()
+            self.dash_view.setStyleSheet("background:#0d0d0d;")
+            self.dash_view.loadFinished.connect(
+                lambda ok: ok and self.dash_view.page().runJavaScript(_DASH_DARK_JS))
+            v.addWidget(self.dash_view, stretch=1)
+        else:
+            self.dash_view = None
+            missing = QLabel(
+                "In-app dashboard needs the PyQt6-WebEngine package:\n\n"
+                "    pip install PyQt6-WebEngine\n\n"
+                "Until then, use 'Open in browser' above.")
+            missing.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            missing.setStyleSheet("color:#888; font-family:Consolas;")
+            v.addWidget(missing, stretch=1)
+        return page
+
+    def _on_tab_changed(self, idx):
+        self._refresh_cctv_combo()
+        if idx == self.TAB_ANALYTICS:
+            self._refresh_analytics()
+
+    def _generate_dashboard(self):
+        """Build the dashboard HTML; returns (path, session_count) or None."""
+        try:
+            from src.analytics import generate_dashboard
+            from src.analytics.recorder import load_sessions
+            n = len(load_sessions())
+            path = generate_dashboard(open_browser=False)
+            return path, n
+        except Exception as e:
+            QMessageBox.critical(self, "Analytics", f"Could not build dashboard:\n{e}")
+            return None
+
+    def _refresh_analytics(self):
+        if not self.dash_view:
+            return
+        built = self._generate_dashboard()
+        if not built:
+            return
+        path, n = built
+        self.analytics_info.setText(
+            f"{n} session(s) · regenerated {datetime.now():%H:%M:%S}")
+        self.dash_view.load(QUrl.fromLocalFile(str(Path(path).resolve())))
+
+    def _open_dashboard(self):
+        """Monitor-tab button: show the dashboard inside the app when possible."""
+        if self.dash_view:
+            self.tabs.setCurrentIndex(self.TAB_ANALYTICS)  # triggers refresh
+        else:
+            self._open_dashboard_browser()
+
+    def _open_dashboard_browser(self):
+        built = self._generate_dashboard()
+        if built:
+            webbrowser.open(Path(built[0]).as_uri())
+
     # ---- cctv tab ----
 
     def _build_cctv_tab(self):
@@ -592,6 +727,14 @@ class MainWindow(QMainWindow):
     def _section(self, text):
         lbl = QLabel(text); lbl.setObjectName("section")
         return lbl
+
+    def _group(self, parent_layout, title):
+        """Add a titled group box and return its inner layout."""
+        box = QGroupBox(title)
+        lay = QVBoxLayout(box)
+        lay.setSpacing(8)
+        parent_layout.addWidget(box)
+        return lay
 
     def _slider(self, parent_layout, label, lo, hi, init, factor=1):
         head = QHBoxLayout()
@@ -867,15 +1010,6 @@ class MainWindow(QMainWindow):
             threading.Thread(target=_beep, daemon=True).start()
         else:
             QApplication.beep()
-
-    def _open_dashboard(self):
-        try:
-            from src.analytics import generate_dashboard
-            path = generate_dashboard(open_browser=False)
-            webbrowser.open(Path(path).as_uri())
-            self._log(f"[analytics] Dashboard: {path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Analytics", f"Could not build dashboard:\n{e}")
 
     def _export_alerts(self):
         if not self.alerts:

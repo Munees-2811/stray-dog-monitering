@@ -159,7 +159,9 @@ MSME deployments.
   saving, +10 s skip. A **compute line** under the video shows GPU vs CPU.
 - **CCTV Cameras tab** — register/test/remove RTSP cameras (shared
   `data/cameras.json` with the web app); any camera is selectable as a source.
-- **Analytics** — one click builds the dashboard and opens it in your browser.
+- **Analytics tab** — the full dashboard rendered *inside the app* (session
+  filter, tooltips and all), with a Refresh button; falls back to opening in
+  the browser if `PyQt6-WebEngine` isn't installed.
 - Detection runs in a background thread (the window never freezes) and live
   sources use the threaded latest-frame reader, so the feed can't lag behind.
 

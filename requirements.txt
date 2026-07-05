@@ -24,3 +24,4 @@ streamlit>=1.36.0
 
 # Native desktop app (python app3.py)
 PyQt6>=6.5.0
+PyQt6-WebEngine>=6.5.0   # renders the analytics dashboard inside the app
